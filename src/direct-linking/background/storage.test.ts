@@ -7,10 +7,7 @@ import * as DATA from './storage.test.data'
 describe('Annotations storage', () => {
     const storageManager = initStorageManager()
 
-    const { annotationStorage } = new AnnotationBackground({
-        storageManager,
-        getDb,
-    })
+    let annotationStorage
 
     async function insertTestData() {
         // Insert annotations and direct links
@@ -34,6 +31,10 @@ describe('Annotations storage', () => {
 
     beforeAll(async () => {
         await storageManager.finishInitialization()
+        annotationStorage = new AnnotationBackground({
+            storageManager,
+            getDb: new Promise(res => res(storageManager.backend['dexie'])),
+        })
     })
 
     beforeEach(async () => {

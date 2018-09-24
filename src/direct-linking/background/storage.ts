@@ -4,6 +4,7 @@ import { browser, Tabs, Storage } from 'webextension-polyfill-ts'
 import { createPageFromTab, Dexie } from '../../search'
 import { FeatureStorage } from '../../search/storage'
 import { STORAGE_KEYS as IDXING_PREF_KEYS } from '../../options/settings/constants'
+import { Tag } from '../../search/models'
 
 export interface Annotation {
     pageTitle: string
@@ -28,7 +29,7 @@ export default class DirectLinkingStorage extends FeatureStorage {
         getDb,
     }: {
         storageManager: StorageManager
-        browserStorageArea: Storage.StorageArea
+        browserStorageArea?: Storage.StorageArea
         getDb: Promise<Dexie>
     }) {
         super(storageManager)
@@ -146,7 +147,7 @@ export class AnnotationStorage extends FeatureStorage {
         getDb,
     }: {
         storageManager: StorageManager
-        browserStorageArea: Storage.StorageArea
+        browserStorageArea?: Storage.StorageArea
         getDb: Promise<Dexie>
     }) {
         super(storageManager)
@@ -211,13 +212,13 @@ export class AnnotationStorage extends FeatureStorage {
     async getAnnotationByPk(url: string) {
         return this.storageManager
             .collection(AnnotationStorage.ANNOTATIONS_COLL)
-            .findOneObject({ url })
+            .findOneObject<Annotation>({ url })
     }
 
     async getAnnotationsByUrl(pageUrl: string) {
         return this.storageManager
             .collection(AnnotationStorage.ANNOTATIONS_COLL)
-            .findObjects({ pageUrl })
+            .findObjects<Annotation>({ pageUrl })
     }
 
     async insertDirectLink({
@@ -286,7 +287,7 @@ export class AnnotationStorage extends FeatureStorage {
     async getTagsByAnnotationUrl(url: string) {
         return this.storageManager
             .collection(AnnotationStorage.TAGS_COLL)
-            .findObjects({ url })
+            .findObjects<Tag>({ url })
     }
 
     modifyTags = (shouldAdd: boolean) => async (name: string, url: string) => {
