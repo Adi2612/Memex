@@ -258,6 +258,33 @@ export class AnnotationStorage extends FeatureStorage {
         return isDirectLink
     }
 
+    private applyUrlFilters(
+        query,
+        { domainUrlsInc, domainUrlsExc, tagUrlsInc, tagUrlsExc }: UrlFilters,
+    ) {
+        if (domainUrlsInc != null && domainUrlsInc.size) {
+            query.pageUrl = {
+                $in: [...domainUrlsInc],
+                ...(query.pageUrl || {}),
+            }
+        }
+
+        if (domainUrlsExc != null && domainUrlsExc.size) {
+            query.pageUrl = {
+                $nin: [...domainUrlsExc],
+                ...(query.pageUrl || {}),
+            }
+        }
+
+        if (tagUrlsInc != null && tagUrlsInc.size) {
+            query.url = { $in: [...tagUrlsInc], ...(query.url || {}) }
+        }
+
+        if (tagUrlsExc != null && tagUrlsExc.size) {
+            query.url = { $nin: [...tagUrlsExc], ...(query.url || {}) }
+        }
+    }
+
     /**
      * I don't know why this is the only way I can get this working...
      * I originally intended a simpler single query like:
@@ -272,7 +299,7 @@ export class AnnotationStorage extends FeatureStorage {
             highlightsOnly = false,
             directLinksOnly = false,
         }: Partial<SearchParams>,
-        { domainUrls, tagUrls }: UrlFilters,
+        urlFilters: UrlFilters,
     ) => async (term: string) => {
         const termSearchField = async (field: string) => {
             const query: any = {
@@ -283,14 +310,10 @@ export class AnnotationStorage extends FeatureStorage {
                 },
             }
 
+            this.applyUrlFilters(query, urlFilters)
+
             if (url != null && url.length) {
                 query.pageUrl = url
-            } else if (domainUrls != null && domainUrls.size) {
-                query.pageUrl = { $in: [...domainUrls] }
-            }
-
-            if (tagUrls != null && tagUrls.size) {
-                query.url = { $in: [...tagUrls] }
             }
 
             const results = await this.storageManager
@@ -302,13 +325,6 @@ export class AnnotationStorage extends FeatureStorage {
                 : results
         }
 
-        if (
-            (domainUrls != null && domainUrls.size === 0) ||
-            (tagUrls != null && tagUrls.size === 0)
-        ) {
-            return []
-        }
-
         const bodyRes = await termSearchField('_body_terms')
         const commentsRes = highlightsOnly
             ? []
@@ -317,7 +333,7 @@ export class AnnotationStorage extends FeatureStorage {
         return this._uniqAnnots([...bodyRes, ...commentsRes]).slice(0, limit)
     }
 
-    private async tagSearch({ tags }: Partial<SearchParams>) {
+    private async tagSearch(tags: string[]) {
         if (!tags.length) {
             return undefined
         }
@@ -329,7 +345,7 @@ export class AnnotationStorage extends FeatureStorage {
         return new Set<string>(tagResults.map(tag => tag.url))
     }
 
-    private async domainSearch({ domains }: Partial<SearchParams>) {
+    private async domainSearch(domains: string[]) {
         if (!domains.length) {
             return undefined
         }
@@ -348,21 +364,35 @@ export class AnnotationStorage extends FeatureStorage {
 
     async search({
         terms = [],
-        tags = [],
-        domains = [],
+        tagsInc = [],
+        tagsExc = [],
+        domainsInc = [],
+        domainsExc = [],
+        limit = 5,
         ...searchParams
     }: SearchParams) {
         const filters: UrlFilters = {
-            tagUrls: await this.tagSearch({ tags }),
-            domainUrls: await this.domainSearch({ domains }),
+            tagUrlsInc: await this.tagSearch(tagsInc),
+            tagUrlsExc: await this.tagSearch(tagsExc),
+            domainUrlsInc: await this.domainSearch(domainsInc),
+            domainUrlsExc: await this.domainSearch(domainsExc),
+        }
+
+        // If domains/tags filters were specified but no matches, search fails early
+        if (
+            (filters.domainUrlsInc != null &&
+                filters.domainUrlsInc.size === 0) ||
+            (filters.tagUrlsInc != null && filters.tagUrlsInc.size === 0)
+        ) {
+            return []
         }
 
         const termResults = await Promise.all(
-            terms.map(this.termSearch(searchParams, filters)),
+            terms.map(this.termSearch({ ...searchParams, limit }, filters)),
         )
 
         // Flatten out results
-        return this._uniqAnnots([].concat(...termResults))
+        return this._uniqAnnots([].concat(...termResults)).slice(0, limit)
     }
 
     async insertDirectLink({
