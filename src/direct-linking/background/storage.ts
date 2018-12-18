@@ -13,12 +13,9 @@ import { STORAGE_KEYS as IDXING_PREF_KEYS } from '../../options/settings/constan
 import { Annotation, SearchParams, UrlFilters } from '../types'
 
 export interface Annotation {
-    pageTitle: string
     pageUrl: string
     body: string
-    selector: object
     createdWhen?: Date
-    lastEdited?: Date
     url?: string
     comment?: string
 }
@@ -362,6 +359,19 @@ export class AnnotationStorage extends FeatureStorage {
         return new Set<string>(pages.map(page => page.url))
     }
 
+    private projectSearchResults(results) {
+        return results.map(
+            ({ url, pageUrl, body, comment, createdWhen, tags }) => ({
+                url,
+                pageUrl,
+                body,
+                comment,
+                createdWhen,
+                tags: tags.map(tag => tag.name),
+            }),
+        )
+    }
+
     async search({
         terms = [],
         tagsInc = [],
@@ -392,7 +402,21 @@ export class AnnotationStorage extends FeatureStorage {
         )
 
         // Flatten out results
-        return this._uniqAnnots([].concat(...termResults)).slice(0, limit)
+        let annotResults = this._uniqAnnots([].concat(...termResults)).slice(
+            0,
+            limit,
+        )
+
+        // Lookup tags for each annotation
+        annotResults = await Promise.all(
+            annotResults.map(async annot => ({
+                ...annot,
+                tags: await this.getTagsByAnnotationUrl(annot.url),
+            })),
+        )
+
+        // Project out unwanted data
+        return this.projectSearchResults(annotResults)
     }
 
     async insertDirectLink({
