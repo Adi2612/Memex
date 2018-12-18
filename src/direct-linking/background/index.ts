@@ -10,23 +10,28 @@ import { AnnotationRequests } from './request'
 import DirectLinkingStorage, { AnnotationStorage } from './storage'
 import normalize from '../../util/encode-url-for-id'
 import { StorageManager, Dexie } from '../../search/types'
+import QueryBuilder from '../../search/query-builder'
 import { AnnotationSender, SearchParams } from '../types'
 
 export default class DirectLinkingBackground {
     private backend: DirectLinkingBackend
     private sendAnnotation: AnnotationSender
     private requests: AnnotationRequests
+    private queryBuilder: QueryBuilder
     directLinkingStorage: DirectLinkingStorage
     annotationStorage: AnnotationStorage
 
     constructor({
         storageManager,
         getDb,
+        queryBuilder = new QueryBuilder(),
     }: {
         storageManager: StorageManager
         getDb: Promise<Dexie>
+        queryBuilder?: QueryBuilder
     }) {
         this.backend = new DirectLinkingBackend()
+        this.queryBuilder = queryBuilder
         this.directLinkingStorage = new DirectLinkingStorage({
             storageManager,
             getDb,
@@ -144,8 +149,17 @@ export default class DirectLinkingBackground {
         return uniqueUrl
     }
 
-    async searchAnnotations({ tab }, params: SearchParams) {
-        return this.annotationStorage.search(params)
+    async searchAnnotations({}, { query, ...params }: { query: string }) {
+        const qb = this.queryBuilder.searchTerm(query).get()
+
+        if (qb.isBadTerm || qb.isInvalidSearch) {
+            return []
+        }
+
+        return this.annotationStorage.search({
+            terms: [...qb.query],
+            ...params,
+        })
     }
 
     async editAnnotation({ tab }, pk, comment) {
